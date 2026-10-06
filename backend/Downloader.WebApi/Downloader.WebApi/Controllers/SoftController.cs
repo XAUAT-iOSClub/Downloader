@@ -1,6 +1,7 @@
 using Downloader.Data.DTOs;
 using Downloader.DataApi.Services;
 using Microsoft.AspNetCore.Authorization;
+using Downloader.WebApi.Auth;
 using Microsoft.AspNetCore.Mvc;
 using Downloader.WebApi.Storage;
 
@@ -25,7 +26,10 @@ public class SoftController(ISoftService softService, IFileStorage fileStorage) 
         return Ok(soft);
     }
 
-    [Authorize(Roles = "Admin")]
+    /// <summary>
+    /// 新增安装包记录。允许 Admin 的 JWT 或持 publish 范围的 API Key 调用。
+    /// </summary>
+    [Authorize(Policy = AuthorizationPolicies.Publish)]
     [HttpPost]
     public async Task<ActionResult<SoftDto>> Create([FromBody] SoftCreateDto dto)
     {
@@ -34,7 +38,7 @@ public class SoftController(ISoftService softService, IFileStorage fileStorage) 
         return CreatedAtAction(nameof(GetById), new { id = soft.Id }, soft);
     }
 
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = AuthorizationPolicies.Publish)]
     [HttpPost("upload")]
     [RequestSizeLimit(2_147_483_648)]
     [RequestFormLimits(MultipartBodyLengthLimit = 2_147_483_648)]

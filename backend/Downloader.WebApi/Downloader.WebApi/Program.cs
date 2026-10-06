@@ -4,6 +4,7 @@ using Downloader.Data;
 using Downloader.Data.Models;
 using Downloader.DataApi.Repos;
 using Downloader.DataApi.Services;
+using Downloader.WebApi.Auth;
 using Downloader.WebApi.Configuration;
 using Downloader.WebApi.Storage;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -76,6 +77,7 @@ builder.Services.AddCors(options =>
 
 #region 仓库/服务 依赖注入
 
+builder.Services.AddScoped<IApiKeyRepo, ApiKeyRepo>();
 builder.Services.AddScoped<IAppRepo, AppRepo>();
 builder.Services.AddScoped<IChannelRepo, ChannelRepo>();
 builder.Services.AddScoped<IProtocolRepo, ProtocolRepo>();
@@ -83,6 +85,7 @@ builder.Services.AddScoped<IReleaseRepo, ReleaseRepo>();
 builder.Services.AddScoped<ISoftRepo, SoftRepo>();
 builder.Services.AddScoped<IUserRepo, UserRepo>();
 
+builder.Services.AddScoped<IApiKeyService, ApiKeyService>();
 builder.Services.AddScoped<IAppService, AppService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IChannelService, ChannelService>();
@@ -123,8 +126,18 @@ builder.Services.AddScoped<IFileStorage>(serviceProvider =>
 
 builder.Services.AddAuthentication(options =>
     {
-        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+        // 默认走 Smart 策略方案，由它按请求头决定用 JWT 还是 API Key
+        options.DefaultScheme = AuthSchemeNames.Smart;
+        options.DefaultAuthenticateScheme = AuthSchemeNames.Smart;
+        options.DefaultChallengeScheme = AuthSchemeNames.Smart;
+    })
+    .AddPolicyScheme(AuthSchemeNames.Smart, "JWT 或 API Key", options =>
+    {
+        options.ForwardDefaultSelector = context =>
+            context.Request.Headers.TryGetValue(ApiKeyAuthDefaults.HeaderName, out var apiKeyHeader) &&
+            !string.IsNullOrWhiteSpace(apiKeyHeader.ToString())
+                ? ApiKeyAuthDefaults.SchemeName
+                : JwtBearerDefaults.AuthenticationScheme;
     })
     .AddJwtBearer(options =>
     {
@@ -138,7 +151,25 @@ builder.Services.AddAuthentication(options =>
             ValidAudience = jwtOptions.Audience,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.SecretKey))
         };
+    })
+    .AddScheme<ApiKeyAuthenticationOptions, ApiKeyAuthenticationHandler>(
+        ApiKeyAuthDefaults.SchemeName, _ => { });
+
+builder.Services.AddAuthorization(options =>
+{
+    // 发布接口：Admin 的 JWT，或带 publish 范围的 API Key 均可
+    options.AddPolicy(AuthorizationPolicies.Publish, policy => policy.RequireAssertion(context =>
+        context.User.IsInRole("Admin") ||
+        (context.User.IsInRole(ApiKeyAuthDefaults.RoleName) &&
+         context.User.HasClaim(ApiKeyAuthDefaults.ScopeClaimType, ApiKeyScopes.Publish))));
+
+    // 密钥管理接口：只认 JWT 登录的 Admin，API Key 不能给自己签发新密钥
+    options.AddPolicy(AuthorizationPolicies.JwtAdmin, policy =>
+    {
+        policy.AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme);
+        policy.RequireRole("Admin");
     });
+});
 
 #endregion
 

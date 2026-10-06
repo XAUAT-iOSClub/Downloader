@@ -1,3 +1,4 @@
+export * from './apiKeyService'
 export * from './appService'
 export * from './authService'
 export * from './channelService'

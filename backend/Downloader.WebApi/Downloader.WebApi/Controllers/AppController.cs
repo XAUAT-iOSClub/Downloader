@@ -1,6 +1,8 @@
+using System.Security.Claims;
 using Downloader.Data.DTOs;
 using Downloader.DataApi.Services;
 using Microsoft.AspNetCore.Authorization;
+using Downloader.WebApi.Auth;
 using Microsoft.AspNetCore.Mvc;
 using Downloader.WebApi.Storage;
 
@@ -33,10 +35,19 @@ public class AppController(IAppService appService, IFileStorage fileStorage) : C
         return Ok(version);
     }
 
-    [Authorize(Roles = "Admin")]
+    /// <summary>
+    /// 创建应用。允许 Admin 的 JWT 或持 publish 范围的 API Key 调用。
+    /// </summary>
+    [Authorize(Policy = AuthorizationPolicies.Publish)]
     [HttpPost]
     public async Task<ActionResult<AppDto>> Create([FromBody] AppCreateDto dto)
     {
+        // 未显式指定归属用户时（API Key 调用通常如此），归属到当前认证身份
+        if (string.IsNullOrWhiteSpace(dto.UserId))
+        {
+            dto.UserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+        }
+
         var app = await appService.CreateAsync(dto);
         if (app == null) return BadRequest("Could not create app. Invalid UserId?");
         return CreatedAtAction(nameof(GetById), new { id = app.Id }, app);
@@ -51,7 +62,7 @@ public class AppController(IAppService appService, IFileStorage fileStorage) : C
         return NoContent();
     }
 
-    [Authorize(Roles = "Admin")]
+    [Authorize(Policy = AuthorizationPolicies.Publish)]
     [HttpPost("{id}/icon")]
     [RequestSizeLimit(10_485_760)]
     [RequestFormLimits(MultipartBodyLengthLimit = 10_485_760)]

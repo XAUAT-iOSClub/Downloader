@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router'
 import { AdminLayout } from '@/layouts/AdminLayout'
+import { AdminApiKeysPage } from './admin/AdminApiKeysPage'
 import { AdminAppDetailPage } from './admin/AdminAppDetailPage'
 import { AdminAppsPage } from './admin/AdminAppsPage'
 import { AdminChannelsPage } from './admin/AdminChannelsPage'
@@ -19,6 +20,7 @@ export function AdminPage() {
         <Route path="apps/:id/add-protocol" element={<AdminAddProtocolPage />} />
         <Route path="apps/:id/protocols/:protocolId" element={<AdminEditProtocolPage />} />
         <Route path="channels" element={<AdminChannelsPage />} />
+        <Route path="api-keys" element={<AdminApiKeysPage />} />
         <Route path="*" element={<Navigate to="/admin" replace />} />
       </Routes>
     </AdminLayout>

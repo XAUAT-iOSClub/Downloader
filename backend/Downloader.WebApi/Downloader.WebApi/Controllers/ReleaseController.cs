@@ -1,6 +1,7 @@
 using Downloader.Data.DTOs;
 using Downloader.DataApi.Services;
 using Microsoft.AspNetCore.Authorization;
+using Downloader.WebApi.Auth;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Downloader.WebApi.Controllers;
@@ -24,7 +25,10 @@ public class ReleaseController(IReleaseService releaseService) : ControllerBase
         return Ok(release);
     }
 
-    [Authorize(Roles = "Admin")]
+    /// <summary>
+    /// 新增版本。允许 Admin 的 JWT 或持 publish 范围的 API Key 调用。
+    /// </summary>
+    [Authorize(Policy = AuthorizationPolicies.Publish)]
     [HttpPost]
     public async Task<ActionResult<ReleaseDto>> Create([FromBody] ReleaseCreateDto dto)
     {

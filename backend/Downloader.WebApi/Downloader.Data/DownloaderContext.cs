@@ -15,6 +15,7 @@ public class DownloaderContext(DbContextOptions<DownloaderContext> options) : Db
     public DbSet<ReleaseModel> Releases { get; set; }
     public DbSet<SoftModel> SoftModels { get; set; }
     public DbSet<ChannelModel> Channels { get; set; }
+    public DbSet<ApiKeyModel> ApiKeys { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -27,6 +28,17 @@ public class DownloaderContext(DbContextOptions<DownloaderContext> options) : Db
         modelBuilder.Entity<AppModel>().HasMany(x => x.Protocols).WithOne(x => x.App);
 
         modelBuilder.Entity<ReleaseModel>().HasMany(x => x.SoftModels).WithOne(x => x.Release);
+
+        modelBuilder.Entity<UserModel>()
+            .HasMany<ApiKeyModel>()
+            .WithOne(x => x.User)
+            .HasForeignKey(x => x.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // 认证时按哈希精确命中，加唯一索引既加速查询也避免重复密钥
+        modelBuilder.Entity<ApiKeyModel>()
+            .HasIndex(x => x.KeyHash)
+            .IsUnique();
     }
 }
 

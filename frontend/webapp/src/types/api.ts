@@ -143,3 +143,32 @@ export interface LoginResultDto {
   token: string
   user: UserDto
 }
+
+export interface ApiKeyDto {
+  id: string
+  name: string
+  prefix: string
+  scope: string
+  userId: string
+  username: string
+  isActive: boolean
+  createdAt: string
+  expiresAt: string | null
+  lastUsedAt: string | null
+  isExpired: boolean
+}
+
+export interface ApiKeyCreateDto {
+  name: string
+  /** 有效天数，留空表示永不过期 */
+  expireDays?: number | null
+}
+
+export interface ApiKeyCreatedDto extends ApiKeyDto {
+  /** 密钥明文，只在创建时返回一次 */
+  key: string
+}
+
+export interface ApiKeyStatusDto {
+  isActive: boolean
+}

@@ -80,6 +80,10 @@ const data = {
           title: "渠道管理",
           url: "/admin/channels",
         },
+        {
+          title: "API 密钥",
+          url: "/admin/api-keys",
+        },
       ],
     },
   ],
