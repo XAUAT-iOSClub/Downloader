@@ -1,7 +1,11 @@
 ﻿services:
-  downloader.wenapi:
-    image: downloader.wenapi
+  # 本地开发用（docker compose up）。生产部署见仓库根目录 deploy/。
+  app:
+    image: downloader-webapi
     build:
       context: .
-      dockerfile: Downloader.WenApi/Dockerfile
-
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    ports:
+      - "${APP_PORT:-8081}:8080"

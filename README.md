@@ -68,3 +68,58 @@ dotnet run --project Downloader.Migrator -- --apply
 并在 URL 映射发生变化时更新数据库。默认保留 R2 源文件，只有显式加 `--delete-source`
 才会清理。继续使用 `/files` 代理时，让 COS 的 `KeyPrefix` 与 R2 保持一致即可不改数据库，
 详细步骤、切换配置和回滚方式见 [迁移工具说明](backend/Downloader.WebApi/Downloader.Migrator/README.md)。
+
+## 部署（仅后端）
+
+CI 与服务器脚本只处理后端 `Downloader.WebApi`，前端不在这条链路里。
+
+### CI：只构建镜像，不部署
+
+[.github/workflows/deploy-production.yml](.github/workflows/deploy-production.yml) 在推送到 `main`
+或手动触发时，先对 `backend/Downloader.WebApi/Downloader.WebApi.slnx` 跑构建与测试，
+再把后端镜像推送到 GHCR（`ghcr.io/lumaristeam/downloader`，tag 为本次 commit SHA 与 `latest`）。
+**它不会碰服务器**——部署由人工在服务器上执行，发布时机由你决定，CI 也不必持有服务器私钥。
+
+如果配置了仓库 Variable `MIRROR_REGISTRY` 和 `MIRROR_NAMESPACE`，同一批 tag 还会额外
+推一份到国内镜像仓库（腾讯云 TCR），配套 Secret 是 `MIRROR_USERNAME` / `MIRROR_PASSWORD`。
+
+### 服务器首次部署
+
+```bash
+sudo mkdir -p /opt/downloader/deploy
+sudo chown -R "$USER" /opt/downloader
+cd /opt/downloader/deploy
+
+# 1) compose 定义与部署脚本（从仓库 deploy/ 目录复制）
+scp <本机>:Downloader/deploy/docker-compose.production.yml .
+scp <本机>:Downloader/deploy/build_from_ghcr.sh .
+chmod +x build_from_ghcr.sh
+
+# 2) 环境文件（照 backend/Downloader.WebApi/Downloader.WebApi/.env.example 填写）
+$EDITOR .env
+chmod 600 .env
+```
+
+生产环境至少要在 `.env` 里配置 `SQL`（PostgreSQL）、`JwtSettings__*` 和
+`Storage__*`。不填 `SQL` 时应用会退化为容器内 SQLite，容器重启后数据即丢失。
+
+### 每次发布
+
+```bash
+cd /opt/downloader/deploy
+./build_from_ghcr.sh                                            # 拉 :latest
+./build_from_ghcr.sh ccr.ccs.tencentyun.com/lumaris/downloader:<sha>   # 指定版本，也是回滚方式
+APP_PORT=9090 ./build_from_ghcr.sh                              # 改宿主机端口（默认 8081）
+```
+
+脚本会拉取镜像、`docker compose up -d`，并等到日志里出现 `Now listening on` 才报成功；
+末尾会打印自检命令与准确的回滚命令。宿主机端口默认 `8081`，因为同一台服务器上的
+EduApi 默认占用 `8080`。
+
+TCR 是私有仓库，服务器需要凭据：`PULL_TOKEN=<TCR 初始化密码>`、
+`PULL_USERNAME=<腾讯云账号 ID>`；脚本用完会 `docker logout`。不传则沿用本机已有的
+docker 凭据。要改从 ghcr 拉取，加 `USE_GHCR=1`，凭据换成一张只勾 `read:packages`
+的 GitHub classic PAT。
+
+本地开发可以直接在 `backend/Downloader.WebApi` 下执行 `docker compose up --build`，
+它使用同目录的 [compose.yaml](backend/Downloader.WebApi/compose.yaml)。
