@@ -24,10 +24,24 @@ public sealed class S3FileStorage(FileStorageOptions options) : IFileStorage
             AutoCloseStream = true
         };
 
-        if (UsesR2Compatibility())
+        var usesCos = UsesCosCompatibility();
+
+        if (UsesR2Compatibility() || _s3Options.DisablePayloadSigning)
         {
             request.DisablePayloadSigning = true;
+        }
+
+        if (UsesR2Compatibility() || usesCos || _s3Options.DisableChecksum)
+        {
             request.DisableDefaultChecksumValidation = true;
+        }
+
+        if (usesCos)
+        {
+            // COS 对 AWS SDK v4 默认的 aws-chunked/CRC 头兼容性不稳定：
+            // 关闭 chunked 编码并显式给出长度，避免上传被拒或内容为空。
+            request.UseChunkEncoding = false;
+            request.Headers.ContentLength = file.Length;
         }
 
         if (!string.IsNullOrWhiteSpace(file.ContentType))
@@ -81,6 +95,13 @@ public sealed class S3FileStorage(FileStorageOptions options) : IFileStorage
         {
             ForcePathStyle = _s3Options.ForcePathStyle || UsesR2Compatibility()
         };
+
+        // COS 的 SigV4 签名地域必须与实际 Bucket 地域一致；R2 的 auto 保持原行为。
+        if (!string.IsNullOrWhiteSpace(_s3Options.Region) &&
+            !string.Equals(_s3Options.Region, "auto", StringComparison.OrdinalIgnoreCase))
+        {
+            config.AuthenticationRegion = _s3Options.Region;
+        }
 
         if (!string.IsNullOrWhiteSpace(_s3Options.ServiceUrl))
         {
@@ -153,6 +174,17 @@ public sealed class S3FileStorage(FileStorageOptions options) : IFileStorage
     {
         return !string.IsNullOrWhiteSpace(_s3Options.ServiceUrl) &&
                _s3Options.ServiceUrl.Contains(".r2.cloudflarestorage.com", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool UsesCosCompatibility()
+    {
+        if (!string.IsNullOrWhiteSpace(_s3Options.ServiceUrl))
+        {
+            return _s3Options.ServiceUrl.Contains("myqcloud.com", StringComparison.OrdinalIgnoreCase);
+        }
+
+        // 没配 ServiceUrl 时，S3FileStorage 会按 Region 拼出 COS 端点。
+        return !string.IsNullOrWhiteSpace(_s3Options.Region);
     }
 
     private sealed class DisposableStream(Stream innerStream, IDisposable owner) : Stream

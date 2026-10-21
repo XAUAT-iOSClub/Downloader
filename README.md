@@ -6,7 +6,7 @@
 
 ### 后端配置
 
-后端现在只从 [backend/Downloader.WebApi/Downloader.WebApi/.env](/Users/luckyfish/Documents/Project/Downloader/backend/Downloader.WebApi/Downloader.WebApi/.env) 读取运行时配置，并通过 [AppRuntimeConfiguration.cs](/Users/luckyfish/Documents/Project/Downloader/backend/Downloader.WebApi/Downloader.WebApi/Configuration/AppRuntimeConfiguration.cs:1) 统一加载，不再依赖 `appsettings.json` / `appsettings.Development.json` 中的业务配置。`Program.cs` 只消费这份集中配置。
+后端现在只从 [backend/Downloader.WebApi/.env](/Users/luckyfish/Documents/Project/Downloader/backend/Downloader.WebApi/.env) 读取运行时配置，并通过 [AppRuntimeConfiguration.cs](/Users/luckyfish/Documents/Project/Downloader/backend/Downloader.WebApi/Downloader.WebApi/Configuration/AppRuntimeConfiguration.cs:1) 统一加载，不再依赖 `appsettings.json` / `appsettings.Development.json` 中的业务配置。`Program.cs` 只消费这份集中配置。
 
 可以参考 [backend/Downloader.WebApi/Downloader.WebApi/.env.example](/Users/luckyfish/Documents/Project/Downloader/backend/Downloader.WebApi/Downloader.WebApi/.env.example)：
 
@@ -50,3 +50,21 @@ Storage__S3__ForcePathStyle=true
 - `Storage__S3__ServiceUrl` 使用 Cloudflare 官方的 R2 S3 兼容端点：`https://<ACCOUNT_ID>.r2.cloudflarestorage.com`。
 - `Storage__S3__PublicBaseUrl` 必填。应用上传成功后会把文件 URL 直接返回给前端，所以这里应配置成你给 R2 绑定的自定义域名，或开发阶段临时使用的 `r2.dev` 公网地址。
 - 生产环境更推荐给 Bucket 绑定自定义域名；`r2.dev` 适合开发测试，不建议长期承载生产下载流量。
+
+### 从 Cloudflare R2 迁移到腾讯云 COS
+
+项目提供了独立的迁移工具 [Downloader.Migrator](backend/Downloader.WebApi/Downloader.Migrator/README.md)：
+
+```bash
+cd backend/Downloader.WebApi
+cp Downloader.Migrator/.env.migrate.example Downloader.Migrator/.env.migrate
+# 填写 R2 / COS / 数据库配置后先 dry-run
+dotnet run --project Downloader.Migrator -- --verbose
+# 确认后执行
+dotnet run --project Downloader.Migrator -- --apply
+```
+
+它会按数据库中的 `soft.SoftUrl` 和 `apps.IconUrl` 复制对象、校验大小（可选 SHA256），
+并在 URL 映射发生变化时更新数据库。默认保留 R2 源文件，只有显式加 `--delete-source`
+才会清理。继续使用 `/files` 代理时，让 COS 的 `KeyPrefix` 与 R2 保持一致即可不改数据库，
+详细步骤、切换配置和回滚方式见 [迁移工具说明](backend/Downloader.WebApi/Downloader.Migrator/README.md)。

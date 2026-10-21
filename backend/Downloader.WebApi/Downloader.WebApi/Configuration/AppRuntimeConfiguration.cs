@@ -45,7 +45,9 @@ public static class AppRuntimeConfigurationLoader
                     AccessKey = GetEnvironmentValue("Storage__S3__AccessKey") ?? "",
                     SecretKey = GetEnvironmentValue("Storage__S3__SecretKey") ?? "",
                     KeyPrefix = GetEnvironmentValue("Storage__S3__KeyPrefix") ?? "",
-                    ForcePathStyle = GetEnvironmentBool("Storage__S3__ForcePathStyle")
+                    ForcePathStyle = GetEnvironmentBool("Storage__S3__ForcePathStyle"),
+                    DisableChecksum = GetEnvironmentBool("Storage__S3__DisableChecksum"),
+                    DisablePayloadSigning = GetEnvironmentBool("Storage__S3__DisablePayloadSigning")
                 },
                 VercelBlob = new VercelBlobStorageOptions
                 {

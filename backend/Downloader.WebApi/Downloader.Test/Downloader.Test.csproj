@@ -28,6 +28,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\Downloader.WebApi\Downloader.WebApi.csproj" />
+      <ProjectReference Include="..\Downloader.Migrator\Downloader.Migrator.csproj" />
     </ItemGroup>
 
 </Project>

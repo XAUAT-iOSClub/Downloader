@@ -64,3 +64,11 @@ keys/
 /wwwroot/upload/
 
 .env
+
+# Storage migration secrets and artifacts
+.env.migrate
+migration-state.json
+migration-state.json.tmp
+migration-state.json.corrupt-*
+migration-report*.csv
+migration.log

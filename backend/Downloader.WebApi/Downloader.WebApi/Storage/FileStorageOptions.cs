@@ -18,6 +18,8 @@ public sealed class S3StorageOptions
     public string SecretKey { get; set; } = "";
     public string KeyPrefix { get; set; } = "";
     public bool ForcePathStyle { get; set; }
+    public bool DisableChecksum { get; set; }
+    public bool DisablePayloadSigning { get; set; }
 }
 
 public sealed class VercelBlobStorageOptions
