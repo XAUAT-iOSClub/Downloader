@@ -59,7 +59,8 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 # 显式导出：compose 插值优先级是 shell 环境 > 同目录 .env。
-# APP_PORT 只在调用方显式传入时导出，否则空值会挡住 .env 里的配置。
+# APP_PORT 只在调用方显式传入时导出；空值时还要 unset——CI（ssh-action 的 envs）会把
+# 未配置的 APP_PORT 以空串注入环境，而空串同样会挡住 .env 里的端口配置。
 export IMAGE COMPOSE_PROJECT_NAME
 
 # ------------------------------------------------------------------ 前置检查
@@ -73,6 +74,9 @@ if [[ -n "$APP_PORT" ]]; then
     exit 1
   fi
   export APP_PORT
+else
+  # 不 unset 的话，从 CI 传进来的空串会覆盖同目录 .env 里的 APP_PORT。
+  unset APP_PORT
 fi
 
 COMPOSE_FILE=""
