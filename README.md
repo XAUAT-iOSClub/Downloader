@@ -73,15 +73,28 @@ dotnet run --project Downloader.Migrator -- --apply
 
 CI 与服务器脚本只处理后端 `Downloader.WebApi`，前端不在这条链路里。
 
-### CI：只构建镜像，不部署
+### CI：构建镜像并自动部署
 
 [.github/workflows/deploy-production.yml](.github/workflows/deploy-production.yml) 在推送到 `main`
 或手动触发时，先对 `backend/Downloader.WebApi/Downloader.WebApi.slnx` 跑构建与测试，
 再把后端镜像推送到 GHCR（`ghcr.io/lumaristeam/downloader`，tag 为本次 commit SHA 与 `latest`）。
-**它不会碰服务器**——部署由人工在服务器上执行，发布时机由你决定，CI 也不必持有服务器私钥。
 
 如果配置了仓库 Variable `MIRROR_REGISTRY` 和 `MIRROR_NAMESPACE`，同一批 tag 还会额外
 推一份到国内镜像仓库（腾讯云 TCR），配套 Secret 是 `MIRROR_USERNAME` / `MIRROR_PASSWORD`。
+自动部署也优先从该镜像仓库拉取；未配置时回退到 GHCR。
+
+镜像推送成功后，如果配置了 SSH secrets，工作流会通过 SSH 把仓库的 `deploy/` 目录同步到
+服务器 `/opt/downloader/deploy/`，并以本次 commit SHA 的镜像执行 `build_from_ghcr.sh`，
+等应用真正监听端口才报告成功。缺少必需 secrets 时只推送镜像并输出跳过提示，不会尝试连接服务器。
+
+自动部署需要的 secrets（放在 `production` environment 或仓库级均可）：
+
+- `SSH_HOST`、`SSH_USER`、`SSH_PRIVATE_KEY`（必需）
+- `SSH_HOST_FINGERPRINT`（建议）：服务器 SSH 主机密钥的 SHA256 指纹
+- `SSH_PASSPHRASE`、`SSH_PORT`（按需）
+
+部署用户需要能直接运行 `docker`（无需 sudo），并拥有 `/opt/downloader/deploy` 的写权限。
+含密钥的 `.env` 始终在服务器上维护，不经过 CI。
 
 ### 服务器首次部署
 
@@ -90,14 +103,17 @@ sudo mkdir -p /opt/downloader/deploy
 sudo chown -R "$USER" /opt/downloader
 cd /opt/downloader/deploy
 
-# 1) compose 定义与部署脚本（从仓库 deploy/ 目录复制）
+# 1) 环境文件（照 backend/Downloader.WebApi/Downloader.WebApi/.env.example 填写）
+$EDITOR .env
+chmod 600 .env
+```
+
+compose 定义与部署脚本由自动部署同步；未启用自动部署时，也可以从仓库手动复制：
+
+```bash
 scp <本机>:Downloader/deploy/docker-compose.production.yml .
 scp <本机>:Downloader/deploy/build_from_ghcr.sh .
 chmod +x build_from_ghcr.sh
-
-# 2) 环境文件（照 backend/Downloader.WebApi/Downloader.WebApi/.env.example 填写）
-$EDITOR .env
-chmod 600 .env
 ```
 
 生产环境至少要在 `.env` 里配置 `SQL`（PostgreSQL）、`JwtSettings__*` 和
@@ -105,16 +121,18 @@ chmod 600 .env
 
 ### 每次发布
 
+启用自动部署后，推送 `main` 或手动运行工作流即可；下面是手动发布与回滚方式：
+
 ```bash
 cd /opt/downloader/deploy
 ./build_from_ghcr.sh                                            # 拉 :latest
 ./build_from_ghcr.sh ccr.ccs.tencentyun.com/lumaris/downloader:<sha>   # 指定版本，也是回滚方式
-APP_PORT=9090 ./build_from_ghcr.sh                              # 改宿主机端口（默认 8081）
+APP_PORT=9090 ./build_from_ghcr.sh                              # 临时改宿主机端口
 ```
 
 脚本会拉取镜像、`docker compose up -d`，并等到日志里出现 `Now listening on` 才报成功；
 末尾会打印自检命令与准确的回滚命令。宿主机端口默认 `8081`，因为同一台服务器上的
-EduApi 默认占用 `8080`。
+EduApi 默认占用 `8080`；也可以写在 `.env` 的 `APP_PORT` 里，显式传入的环境变量优先。
 
 TCR 是私有仓库，服务器需要凭据：`PULL_TOKEN=<TCR 初始化密码>`、
 `PULL_USERNAME=<腾讯云账号 ID>`；脚本用完会 `docker logout`。不传则沿用本机已有的

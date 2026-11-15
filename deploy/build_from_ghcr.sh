@@ -48,7 +48,8 @@ IMAGE="${IMAGE:-${1:-$DEFAULT_IMAGE}}"
 REGISTRY_HOST="${IMAGE%%/*}"
 
 # 宿主机端口默认 8081：同一个服务器上的 XAUAT.EduApi 已经占着 8080。
-APP_PORT="${APP_PORT:-8081}"
+# 仅当调用方显式传入 APP_PORT 时才覆盖；否则让 compose 读取同目录 .env 里的 APP_PORT。
+APP_PORT="${APP_PORT:-}"
 READY_TIMEOUT="${READY_TIMEOUT:-60}"
 
 # compose 的 project 名默认取目录名。这里显式固定，否则固定 container_name 会与旧 project 撞名。
@@ -57,17 +58,21 @@ COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-downloader}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# 显式导出：compose 插值优先级是 shell 环境 > 同目录 .env
-export IMAGE APP_PORT COMPOSE_PROJECT_NAME
+# 显式导出：compose 插值优先级是 shell 环境 > 同目录 .env。
+# APP_PORT 只在调用方显式传入时导出，否则空值会挡住 .env 里的配置。
+export IMAGE COMPOSE_PROJECT_NAME
 
 # ------------------------------------------------------------------ 前置检查
 
 command -v docker >/dev/null 2>&1 || { echo "错误：未找到 docker。" >&2; exit 1; }
 docker compose version >/dev/null 2>&1 || { echo "错误：需要 docker compose v2 插件（docker compose，而非旧版 docker-compose）。" >&2; exit 1; }
 
-if [[ ! "$APP_PORT" =~ ^[0-9]+$ ]] || (( APP_PORT < 1 || APP_PORT > 65535 )); then
-  echo "错误：APP_PORT 必须是 1 到 65535 之间的端口号，收到：'$APP_PORT'" >&2
-  exit 1
+if [[ -n "$APP_PORT" ]]; then
+  if [[ ! "$APP_PORT" =~ ^[0-9]+$ ]] || (( APP_PORT < 1 || APP_PORT > 65535 )); then
+    echo "错误：APP_PORT 必须是 1 到 65535 之间的端口号，收到：'$APP_PORT'" >&2
+    exit 1
+  fi
+  export APP_PORT
 fi
 
 COMPOSE_FILE=""
@@ -202,16 +207,20 @@ docker image prune --force >/dev/null
 
 digest="$(docker image inspect --format '{{index .RepoDigests 0}}' "$IMAGE" 2>/dev/null || true)"
 
+# APP_PORT 可能来自 .env，这里从容器实际映射读回宿主机端口，末尾的自检命令才准确。
+published_port="$(docker port "$CONTAINER_NAME" 8080/tcp 2>/dev/null | head -n 1 | sed 's/.*://' || true)"
+published_port="${APP_PORT:-${published_port:-8081}}"
+
 echo
 echo "==> 部署完成"
 echo "    容器 : $CONTAINER_NAME"
 echo "    镜像 : $IMAGE"
 if [[ -n "$digest" ]]; then echo "    摘要 : $digest"; fi
-echo "    端口 : 宿主机 ${APP_PORT} -> 容器 8080"
+echo "    端口 : 宿主机 ${published_port} -> 容器 8080"
 echo
 # 本镜像是 aspnet:10.0（Debian，带 shell），因此 docker exec 可用。
 # /api/protocol 是公开的只读接口，同时会访问数据库，适合做无副作用的探活。
-echo "    自检 : curl -fsS http://localhost:${APP_PORT}/api/protocol >/dev/null && echo ok"
+echo "    自检 : curl -fsS http://localhost:${published_port}/api/protocol >/dev/null && echo ok"
 echo "    排障 : docker logs -f $CONTAINER_NAME"
 echo "           docker exec -it $CONTAINER_NAME bash"
 if [[ -n "$previous_image" && "$previous_image" != "$IMAGE" ]]; then
